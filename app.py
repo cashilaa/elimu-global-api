@@ -14,9 +14,9 @@ def create_app():
     
     # Configure CORS to allow requests from your frontend
     CORS(app, 
-         origins=["https://elimu-global-testing.onrender.com", "http://localhost:5000"], 
+         origins=["https://elimu-global-testing.onrender.com", "http://localhost:5000"],
          supports_credentials=True,
-         allow_headers=["Content-Type", "Authorization"],
+         allow_headers=["Content-Type", "Authorization", "Accept"],
          expose_headers=["Content-Type"],
          methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"])
 
@@ -99,15 +99,14 @@ def create_app():
         except Exception as e:
             return jsonify({'message': str(e)}), 500
 
-    @app.route('/login', methods=['POST'])
-    def login():
+    @app.route('/login/<user_type>', methods=['POST'])
+    def login(user_type):
         try:
             data = request.json
             email = data.get('email')
             password = data.get('password')
-            user_type = data.get('user_type')  # 'student', 'instructor', or 'admin'
 
-            if not all([email, password, user_type]):
+            if not all([email, password]):
                 return jsonify({'message': 'Missing required fields'}), 400
 
             # Check for admin login
@@ -121,30 +120,26 @@ def create_app():
                     }, SECRET_KEY, algorithm='HS256')
                     return jsonify({
                         'token': token,
-                        'user_type': 'admin',
+                        'userType': 'admin',
                         'message': 'Login successful'
                     }), 200
                 return jsonify({'message': 'Invalid admin credentials'}), 401
 
             # Query Supabase for user
-            user_query = supabase.table('users').select('*').eq('email', email).execute()
+            user_query = supabase.table('users').select('*').eq('email', email).eq('role', user_type).execute()
             
             if not user_query.data:
                 return jsonify({'message': 'User not found'}), 404
 
             user = user_query.data[0]
 
-            # Verify user type matches
-            if user['role'] != user_type:
-                return jsonify({'message': f'Invalid login. Please use the correct portal for {user["role"]}s'}), 401
+            # Verify password
+            if not check_password_hash(user['password'], password):
+                return jsonify({'message': 'Invalid credentials'}), 401
 
             # For instructors, check approval status
             if user_type == 'instructor' and user.get('approval_status') != 'approved':
                 return jsonify({'message': 'Your instructor account is pending approval'}), 403
-
-            # Verify password
-            if not check_password_hash(user['password'], password):
-                return jsonify({'message': 'Invalid credentials'}), 401
 
             # Generate JWT token
             token = jwt.encode({
@@ -156,9 +151,7 @@ def create_app():
 
             return jsonify({
                 'token': token,
-                'user_type': user['role'],
-                'user_id': user['id'],
-                'username': user['username'],
+                'userType': user_type,
                 'message': 'Login successful'
             }), 200
 
