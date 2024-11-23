@@ -1,0 +1,6 @@
+flask
+flask-cors
+supabase
+pyjwt
+werkzeug
+python-dotenv
