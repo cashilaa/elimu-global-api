@@ -97,8 +97,74 @@ def create_app():
         except Exception as e:
             return jsonify({'message': str(e)}), 500
 
+    @app.route('/login', methods=['POST'])
+    def login():
+        try:
+            data = request.json
+            email = data.get('email')
+            password = data.get('password')
+            user_type = data.get('user_type')  # 'student', 'instructor', or 'admin'
+
+            if not all([email, password, user_type]):
+                return jsonify({'message': 'Missing required fields'}), 400
+
+            # Check for admin login
+            if user_type == 'admin':
+                if email == ADMIN_CREDENTIALS['email'] and check_password_hash(ADMIN_CREDENTIALS['password'], password):
+                    token = jwt.encode({
+                        'user_id': 'admin',
+                        'email': email,
+                        'role': 'admin',
+                        'exp': datetime.utcnow() + timedelta(days=1)
+                    }, SECRET_KEY, algorithm='HS256')
+                    return jsonify({
+                        'token': token,
+                        'user_type': 'admin',
+                        'message': 'Login successful'
+                    }), 200
+                return jsonify({'message': 'Invalid admin credentials'}), 401
+
+            # Query Supabase for user
+            user_query = supabase.table('users').select('*').eq('email', email).execute()
+            
+            if not user_query.data:
+                return jsonify({'message': 'User not found'}), 404
+
+            user = user_query.data[0]
+
+            # Verify user type matches
+            if user['role'] != user_type:
+                return jsonify({'message': f'Invalid login. Please use the correct portal for {user["role"]}s'}), 401
+
+            # For instructors, check approval status
+            if user_type == 'instructor' and user.get('approval_status') != 'approved':
+                return jsonify({'message': 'Your instructor account is pending approval'}), 403
+
+            # Verify password
+            if not check_password_hash(user['password'], password):
+                return jsonify({'message': 'Invalid credentials'}), 401
+
+            # Generate JWT token
+            token = jwt.encode({
+                'user_id': user['id'],
+                'email': user['email'],
+                'role': user['role'],
+                'exp': datetime.utcnow() + timedelta(days=1)
+            }, SECRET_KEY, algorithm='HS256')
+
+            return jsonify({
+                'token': token,
+                'user_type': user['role'],
+                'user_id': user['id'],
+                'username': user['username'],
+                'message': 'Login successful'
+            }), 200
+
+        except Exception as e:
+            return jsonify({'message': f'Login failed: {str(e)}'}), 500
+
     @app.route('/api/auth/signin/<user_type>', methods=['POST'])
-    def login(user_type):
+    def login_old(user_type):
         data = request.json
         email = data.get('email')
         password = data.get('password')
@@ -107,7 +173,12 @@ def create_app():
         if user_type == 'admin':
             if (email == ADMIN_CREDENTIALS['email'] and 
                 check_password_hash(ADMIN_CREDENTIALS['password'], password)):
-                token = generate_jwt_token('admin')
+                token = jwt.encode({
+                    'user_id': 'admin',
+                    'email': email,
+                    'role': 'admin',
+                    'exp': datetime.utcnow() + timedelta(days=1)
+                }, SECRET_KEY, algorithm='HS256')
                 return jsonify({
                     'token': token, 
                     'redirect': '/admin-dashboard'
@@ -132,8 +203,13 @@ def create_app():
                 return jsonify({'message': 'Instructor account pending approval'}), 403
             
             # Generate token
-            token = generate_jwt_token(user_type, user_data['id'])
-            
+            token = jwt.encode({
+                'user_id': user_data['id'],
+                'email': user_data['email'],
+                'role': user_data['role'],
+                'exp': datetime.utcnow() + timedelta(days=1)
+            }, SECRET_KEY, algorithm='HS256')
+
             # Determine redirect based on role
             redirects = {
                 'student': '/student-dashboard',
@@ -147,16 +223,6 @@ def create_app():
 
         except Exception as e:
             return jsonify({'message': str(e)}), 500
-
-    def generate_jwt_token(role, user_id=None):
-        payload = {
-            'role': role,
-            'exp': datetime.utcnow() + timedelta(hours=24)
-        }
-        if user_id:
-            payload['user_id'] = user_id
-        
-        return jwt.encode(payload, SECRET_KEY, algorithm='HS256')
 
     # Add a health check endpoint for deployment
     @app.route('/health', methods=['GET'])
