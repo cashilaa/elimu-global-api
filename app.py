@@ -13,7 +13,7 @@ def create_app():
     app = Flask(__name__)
     
     # Configure CORS to allow requests from your frontend
-    CORS(app, origins=["https://elimu-global-testing.onrender.com", "http://localhost:5000"], supports_credentials=True)
+    CORS(app, origins=["https://elimu-global-testing.onrender.com", "http://localhost:5000", "https://elimu-global-backed.onrender.com", "http://localhost:3000"], supports_credentials=True)
 
     # Supabase Configuration
     SUPABASE_URL = os.environ.get('SUPABASE_URL')
@@ -222,6 +222,54 @@ def create_app():
     @app.route('/health', methods=['GET'])
     def health_check():
         return jsonify({'status': 'healthy'}), 200
+        
+    @app.route('/api/verify-token', methods=['GET'])
+    def verify_token():
+        try:
+            # Get token from Authorization header
+            auth_header = request.headers.get('Authorization')
+            if not auth_header or not auth_header.startswith('Bearer '):
+                return jsonify({'valid': False, 'message': 'No token provided'}), 401
+            
+            token = auth_header.split(' ')[1]
+            
+            # Verify token
+            payload = jwt.decode(token, SECRET_KEY, algorithms=['HS256'])
+            
+            # Get user from database to ensure they still exist
+            user_query = supabase.table('users').select('*').eq('id', payload['user_id']).execute()
+            
+            if not user_query.data and payload['user_id'] != 'admin':
+                return jsonify({'valid': False, 'message': 'User not found'}), 404
+                
+            if payload['user_id'] == 'admin':
+                return jsonify({
+                    'valid': True,
+                    'user_id': 'admin',
+                    'email': payload['email'],
+                    'role': 'admin'
+                }), 200
+            
+            user = user_query.data[0]
+            
+            # For instructors, verify approval status
+            if user['role'] == 'instructor' and user.get('approval_status') != 'approved':
+                return jsonify({'valid': False, 'message': 'Instructor account not approved'}), 403
+            
+            return jsonify({
+                'valid': True,
+                'user_id': user['id'],
+                'email': user['email'],
+                'role': user['role']
+            }), 200
+            
+        except jwt.ExpiredSignatureError:
+            return jsonify({'valid': False, 'message': 'Token has expired'}), 401
+        except jwt.InvalidTokenError:
+            return jsonify({'valid': False, 'message': 'Invalid token'}), 401
+        except Exception as e:
+            return jsonify({'valid': False, 'message': str(e)}), 500
+
 
     return app
 
