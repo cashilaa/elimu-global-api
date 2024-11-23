@@ -15,6 +15,13 @@ def create_app():
     # Configure logging
     import logging
     logging.basicConfig(level=logging.DEBUG)
+    app.logger.setLevel(logging.DEBUG)
+    
+    # Print all registered routes on startup
+    def log_routes():
+        app.logger.debug("Registered routes:")
+        for rule in app.url_map.iter_rules():
+            app.logger.debug(f"{rule.endpoint}: {rule.methods} - {rule}")
     
     # Configure CORS with more permissive settings
     CORS(app, 
@@ -109,23 +116,21 @@ def create_app():
         except Exception as e:
             return jsonify({'message': str(e)}), 500
 
-    def handle_login(user_type):
-        app.logger.debug(f'Received login request for user_type: {user_type}')
-        app.logger.debug(f'Request method: {request.method}')
-        app.logger.debug(f'Request headers: {request.headers}')
-        
+    @app.route('/login/<user_type>', methods=['POST', 'OPTIONS'])
+    def login(user_type):
+        app.logger.debug(f"Login attempt for user_type: {user_type}")
         if request.method == 'OPTIONS':
             response = jsonify({'status': 'ok'})
             response.headers['Access-Control-Allow-Origin'] = 'http://localhost:5000'
             response.headers['Access-Control-Allow-Methods'] = 'POST, OPTIONS'
             response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization, Accept'
             response.headers['Access-Control-Allow-Credentials'] = 'true'
-            response.headers['Access-Control-Max-Age'] = '86400'  # 24 hours
+            response.headers['Access-Control-Max-Age'] = '86400'
             return response, 200
 
         try:
             data = request.json
-            app.logger.debug(f'Request data: {data}')
+            app.logger.debug(f'Login request data: {data}')
             
             email = data.get('email')
             password = data.get('password')
@@ -150,7 +155,9 @@ def create_app():
                 return jsonify({'message': 'Invalid admin credentials'}), 401
 
             # Query Supabase for user
+            app.logger.debug(f'Querying Supabase for user: {email} with role: {user_type}')
             user_query = supabase.table('users').select('*').eq('email', email).eq('role', user_type).execute()
+            app.logger.debug(f'Supabase query result: {user_query.data}')
             
             if not user_query.data:
                 return jsonify({'message': 'User not found'}), 404
@@ -183,20 +190,9 @@ def create_app():
             app.logger.error(f'Login error: {str(e)}')
             return jsonify({'message': f'Login failed: {str(e)}'}), 500
 
-    # Support both URL patterns
-    @app.route('/login/<user_type>', methods=['POST', 'OPTIONS'])
-    def login_new(user_type):
-        return handle_login(user_type)
-
-    @app.route('/api/auth/signin/<user_type>', methods=['POST', 'OPTIONS'])
-    def login_old(user_type):
-        return handle_login(user_type)
-
-    # Add a health check endpoint for deployment
-    @app.route('/health', methods=['GET'])
-    def health_check():
-        return jsonify({'status': 'healthy'}), 200
-
+    # Log all registered routes after they're set up
+    log_routes()
+    
     return app
 
 if __name__ == '__main__':
