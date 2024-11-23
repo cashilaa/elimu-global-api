@@ -12,6 +12,10 @@ def create_app():
     load_dotenv()
     app = Flask(__name__)
     
+    # Configure logging
+    import logging
+    logging.basicConfig(level=logging.DEBUG)
+    
     # Configure CORS to allow requests from your frontend
     CORS(app, 
          origins=["https://elimu-global-testing.onrender.com", "http://localhost:5000"],
@@ -99,10 +103,19 @@ def create_app():
         except Exception as e:
             return jsonify({'message': str(e)}), 500
 
-    @app.route('/login/<user_type>', methods=['POST'])
+    @app.route('/api/auth/signin/<user_type>', methods=['POST', 'OPTIONS'])
     def login(user_type):
+        app.logger.debug(f'Received login request for user_type: {user_type}')
+        app.logger.debug(f'Request method: {request.method}')
+        app.logger.debug(f'Request headers: {request.headers}')
+        
+        if request.method == 'OPTIONS':
+            return '', 200
+            
         try:
             data = request.json
+            app.logger.debug(f'Request data: {data}')
+            
             email = data.get('email')
             password = data.get('password')
 
@@ -156,68 +169,8 @@ def create_app():
             }), 200
 
         except Exception as e:
+            app.logger.error(f'Login error: {str(e)}')
             return jsonify({'message': f'Login failed: {str(e)}'}), 500
-
-    @app.route('/api/auth/signin/<user_type>', methods=['POST'])
-    def login_old(user_type):
-        data = request.json
-        email = data.get('email')
-        password = data.get('password')
-
-        # Check for admin login
-        if user_type == 'admin':
-            if (email == ADMIN_CREDENTIALS['email'] and 
-                check_password_hash(ADMIN_CREDENTIALS['password'], password)):
-                token = jwt.encode({
-                    'user_id': 'admin',
-                    'email': email,
-                    'role': 'admin',
-                    'exp': datetime.utcnow() + timedelta(days=1)
-                }, SECRET_KEY, algorithm='HS256')
-                return jsonify({
-                    'token': token, 
-                    'redirect': '/admin-dashboard'
-                }), 200
-            return jsonify({'message': 'Invalid admin credentials'}), 401
-
-        # Regular user login
-        try:
-            user = supabase.table('users').select('*').eq('email', email).eq('role', user_type).execute()
-            
-            if not user.data:
-                return jsonify({'message': 'User not found'}), 404
-            
-            user_data = user.data[0]
-            
-            # Check password
-            if not check_password_hash(user_data['password'], password):
-                return jsonify({'message': 'Invalid credentials'}), 401
-            
-            # Check instructor approval if applicable
-            if user_type == 'instructor' and user_data.get('approval_status') != 'approved':
-                return jsonify({'message': 'Instructor account pending approval'}), 403
-            
-            # Generate token
-            token = jwt.encode({
-                'user_id': user_data['id'],
-                'email': user_data['email'],
-                'role': user_data['role'],
-                'exp': datetime.utcnow() + timedelta(days=1)
-            }, SECRET_KEY, algorithm='HS256')
-
-            # Determine redirect based on role
-            redirects = {
-                'student': '/student-dashboard',
-                'instructor': '/instructor-dashboard'
-            }
-            
-            return jsonify({
-                'token': token, 
-                'redirect': redirects.get(user_type, '/')
-            }), 200
-
-        except Exception as e:
-            return jsonify({'message': str(e)}), 500
 
     # Add a health check endpoint for deployment
     @app.route('/health', methods=['GET'])
