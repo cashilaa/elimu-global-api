@@ -18,11 +18,20 @@ def create_app():
     
     # Configure CORS to allow requests from your frontend
     CORS(app, 
-         origins=["https://elimu-global-testing.onrender.com", "http://localhost:5000"],
-         supports_credentials=True,
-         allow_headers=["Content-Type", "Authorization", "Accept"],
-         expose_headers=["Content-Type"],
-         methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"])
+         resources={
+             r"/login/*": {
+                 "origins": ["http://localhost:5000", "https://elimu-global-testing.onrender.com"],
+                 "methods": ["GET", "POST", "OPTIONS"],
+                 "allow_headers": ["Content-Type", "Authorization", "Accept"],
+                 "supports_credentials": True
+             },
+             r"/api/auth/signin/*": {
+                 "origins": ["http://localhost:5000", "https://elimu-global-testing.onrender.com"],
+                 "methods": ["GET", "POST", "OPTIONS"],
+                 "allow_headers": ["Content-Type", "Authorization", "Accept"],
+                 "supports_credentials": True
+             }
+         })
 
     # Ensure the app can handle JSON requests
     app.config['CORS_HEADERS'] = 'Content-Type'
@@ -103,14 +112,17 @@ def create_app():
         except Exception as e:
             return jsonify({'message': str(e)}), 500
 
-    @app.route('/api/auth/signin/<user_type>', methods=['POST', 'OPTIONS'])
-    def login(user_type):
+    def handle_login(user_type):
         app.logger.debug(f'Received login request for user_type: {user_type}')
         app.logger.debug(f'Request method: {request.method}')
         app.logger.debug(f'Request headers: {request.headers}')
         
         if request.method == 'OPTIONS':
-            return '', 200
+            response = jsonify({'status': 'ok'})
+            response.headers['Access-Control-Allow-Origin'] = request.headers.get('Origin', '*')
+            response.headers['Access-Control-Allow-Methods'] = 'POST, OPTIONS'
+            response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization, Accept'
+            return response
             
         try:
             data = request.json
@@ -171,6 +183,15 @@ def create_app():
         except Exception as e:
             app.logger.error(f'Login error: {str(e)}')
             return jsonify({'message': f'Login failed: {str(e)}'}), 500
+
+    # Support both URL patterns
+    @app.route('/login/<user_type>', methods=['POST', 'OPTIONS'])
+    def login_new(user_type):
+        return handle_login(user_type)
+
+    @app.route('/api/auth/signin/<user_type>', methods=['POST', 'OPTIONS'])
+    def login_old(user_type):
+        return handle_login(user_type)
 
     # Add a health check endpoint for deployment
     @app.route('/health', methods=['GET'])
