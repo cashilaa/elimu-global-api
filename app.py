@@ -16,20 +16,17 @@ def create_app():
     import logging
     logging.basicConfig(level=logging.DEBUG)
     
-    # Configure CORS to allow requests from your frontend
+    # Configure CORS with more permissive settings
     CORS(app, 
          resources={
-             r"/login/*": {
-                 "origins": ["http://localhost:5000", "https://elimu-global-testing.onrender.com"],
+             r"/*": {
+                 "origins": ["http://localhost:5000"],
                  "methods": ["GET", "POST", "OPTIONS"],
                  "allow_headers": ["Content-Type", "Authorization", "Accept"],
-                 "supports_credentials": True
-             },
-             r"/api/auth/signin/*": {
-                 "origins": ["http://localhost:5000", "https://elimu-global-testing.onrender.com"],
-                 "methods": ["GET", "POST", "OPTIONS"],
-                 "allow_headers": ["Content-Type", "Authorization", "Accept"],
-                 "supports_credentials": True
+                 "expose_headers": ["Content-Type"],
+                 "supports_credentials": True,
+                 "send_wildcard": False,
+                 "max_age": 86400
              }
          })
 
@@ -119,11 +116,13 @@ def create_app():
         
         if request.method == 'OPTIONS':
             response = jsonify({'status': 'ok'})
-            response.headers['Access-Control-Allow-Origin'] = request.headers.get('Origin', '*')
+            response.headers['Access-Control-Allow-Origin'] = 'http://localhost:5000'
             response.headers['Access-Control-Allow-Methods'] = 'POST, OPTIONS'
             response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization, Accept'
-            return response
-            
+            response.headers['Access-Control-Allow-Credentials'] = 'true'
+            response.headers['Access-Control-Max-Age'] = '86400'  # 24 hours
+            return response, 200
+
         try:
             data = request.json
             app.logger.debug(f'Request data: {data}')
