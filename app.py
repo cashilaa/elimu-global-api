@@ -17,7 +17,11 @@ def create_app():
          origins=["https://elimu-global-testing.onrender.com", "http://localhost:5000"], 
          supports_credentials=True,
          allow_headers=["Content-Type", "Authorization"],
+         expose_headers=["Content-Type"],
          methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"])
+
+    # Ensure the app can handle JSON requests
+    app.config['CORS_HEADERS'] = 'Content-Type'
 
     # Supabase Configuration
     SUPABASE_URL = os.environ.get('SUPABASE_URL')
