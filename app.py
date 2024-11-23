@@ -21,7 +21,7 @@ def create_app():
     CORS(app, 
          resources={
              r"/*": {
-                 "origins": ["http://localhost:5000"],
+                 "origins": ["http://localhost:5000", "https://elimu-global-testing.onrender.com"],
                  "methods": ["GET", "POST", "OPTIONS"],
                  "allow_headers": ["Content-Type", "Authorization", "Accept"],
                  "expose_headers": ["Content-Type"],
